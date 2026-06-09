@@ -6,16 +6,30 @@
     Data Pelanggan
 </h1>
 
-<a
-    href="/customers/create"
-    class="bg-green-500 text-white px-8 py-4 rounded-2xl"
->
-    + Tambah Pelanggan
-</a>
+<div class="mt-10 flex flex-col sm:flex-row justify-between items-center gap-4">
+    <a
+        href="/customers/create"
+        class="bg-green-500 text-white px-8 py-4 rounded-2xl shadow transition inline-block text-center"
+    >
+        + Tambah Pelanggan
+    </a>
 
-<div class="bg-white rounded-3xl shadow mt-10 overflow-x-auto">
+    <div class="relative w-full sm:w-80">
+        <input 
+            type="text" 
+            id="search-customer" 
+            placeholder="Cari nama, email, nomor HP..." 
+            class="w-full border border-gray-200 rounded-xl pl-4 pr-10 py-3 text-sm outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition shadow-sm"
+        >
+        <span class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">
+            🔍
+        </span>
+    </div>
+</div>
 
-<table class="w-full">
+<div class="bg-white rounded-3xl shadow mt-10">
+    <div class="overflow-x-auto">
+        <table class="w-full" id="customer-table">
 
     <thead class="bg-green-500 text-white">
 
@@ -107,10 +121,26 @@
     </tbody>
 
 </table>
+</div>
 
 </div>
 
 <script>
+// Pencarian Real-time untuk Tabel Pelanggan
+document.getElementById('search-customer')?.addEventListener('input', function(e) {
+    const query = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('#customer-table tbody tr');
+    
+    rows.forEach(row => {
+        if (row.cells.length === 1 && row.cells[0].colSpan === 6) {
+            return;
+        }
+        
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(query) ? '' : 'none';
+    });
+});
+
 function confirmDelete(event, name) {
     event.preventDefault();
     const form = event.target.closest('form');

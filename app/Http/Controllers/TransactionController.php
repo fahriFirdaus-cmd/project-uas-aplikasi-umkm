@@ -22,6 +22,7 @@ class TransactionController extends Controller
         |--------------------------------------------------------------------------
         | AMBIL PRODUK
         |--------------------------------------------------------------------------
+        |
         */
 
         $product = Product::findOrFail($id);
@@ -30,6 +31,7 @@ class TransactionController extends Controller
         |--------------------------------------------------------------------------
         | CEK STOK
         |--------------------------------------------------------------------------
+        |
         */
 
         if ($product->stok <= 0) {
@@ -40,8 +42,24 @@ class TransactionController extends Controller
 
         /*
         |--------------------------------------------------------------------------
+        | CEK PELANGGAN
+        |--------------------------------------------------------------------------
+        |
+        */
+
+        if (\App\Models\Customer::count() == 0) {
+
+            return redirect('/customers/create')->with('error', 'Silakan tambah pelanggan terlebih dahulu.');
+
+        }
+
+        $customer = \App\Models\Customer::first();
+
+        /*
+        |--------------------------------------------------------------------------
         | KURANGI STOK
         |--------------------------------------------------------------------------
+        |
         */
 
         $product->stok -= 1;
@@ -52,89 +70,28 @@ class TransactionController extends Controller
         |--------------------------------------------------------------------------
         | SIMPAN TRANSAKSI
         |--------------------------------------------------------------------------
+        |
         */
 
         Transaction::create([
 
-            /*
-            |--------------------------------------------------------------------------
-            | USER
-            |--------------------------------------------------------------------------
-            */
-
             'user_id' => Auth::id(),
 
-            /*
-            |--------------------------------------------------------------------------
-            | CUSTOMER
-            |--------------------------------------------------------------------------
-            */
-
-            'customer_id' => \App\Models\Customer::where('id', Auth::id())->exists()
-                ? Auth::id()
-                : (\App\Models\Customer::first()?->id ?? Auth::id()),
-
-            /*
-            |--------------------------------------------------------------------------
-            | PRODUCT
-            |--------------------------------------------------------------------------
-            */
+            'customer_id' => $customer->id,
 
             'product_id' => $product->id,
 
-            /*
-            |--------------------------------------------------------------------------
-            | INVOICE
-            |--------------------------------------------------------------------------
-            */
-
             'nomor_invoice' => 'INV-' . rand(1000,9999),
-
-            /*
-            |--------------------------------------------------------------------------
-            | TANGGAL TRANSAKSI
-            |--------------------------------------------------------------------------
-            */
 
             'tanggal_transaksi' => now(),
 
-            /*
-            |--------------------------------------------------------------------------
-            | PELANGGAN
-            |--------------------------------------------------------------------------
-            */
-
-            'pelanggan' => Auth::user()->name,
-
-            /*
-            |--------------------------------------------------------------------------
-            | JUMLAH
-            |--------------------------------------------------------------------------
-            */
+            'pelanggan' => $customer->nama,
 
             'qty' => 1,
 
-            /*
-            |--------------------------------------------------------------------------
-            | TOTAL HARGA
-            |--------------------------------------------------------------------------
-            */
-
             'total_harga' => $product->harga,
 
-            /*
-            |--------------------------------------------------------------------------
-            | STATUS
-            |--------------------------------------------------------------------------
-            */
-
             'status' => 'dibeli',
-
-            /*
-            |--------------------------------------------------------------------------
-            | STATUS PEMBAYARAN
-            |--------------------------------------------------------------------------
-            */
 
             'status_pembayaran' => 'Lunas'
 
@@ -144,6 +101,7 @@ class TransactionController extends Controller
         |--------------------------------------------------------------------------
         | REDIRECT
         |--------------------------------------------------------------------------
+        |
         */
 
         return redirect('/my-orders')
@@ -156,10 +114,11 @@ class TransactionController extends Controller
     | BELI PRODUK (AJAX)
     |--------------------------------------------------------------------------
     | Fitur ini melayani request AJAX untuk pembelian produk tanpa reload halaman.
+    | Jika pelanggan belum ada, mengembalikan response agar form input pelanggan ditampilkan.
     |
     */
 
-    public function beliAjax($id)
+    public function beliAjax(Request $request, $id)
     {
         $product = Product::findOrFail($id);
 
@@ -170,18 +129,54 @@ class TransactionController extends Controller
             ], 400);
         }
 
+        // Cek jika database belum memiliki data pelanggan sama sekali
+        if (\App\Models\Customer::count() == 0 && !$request->has('nama')) {
+            return response()->json([
+                'success' => false,
+                'needs_customer' => true,
+                'message' => 'Belum ada data pelanggan di database. Silakan lengkapi data pelanggan baru untuk melanjutkan pembelian.'
+            ]);
+        }
+
+        $customerId = null;
+        $customerName = Auth::user()->name;
+
+        // Jika request membawa data pelanggan baru
+        if ($request->has('nama')) {
+            $request->validate([
+                'nama' => 'required|string|max:255',
+                'email' => 'required|email|unique:customers,email',
+                'nomor_hp' => 'required|string',
+                'alamat' => 'required|string',
+            ]);
+
+            $customer = \App\Models\Customer::create([
+                'nama' => $request->nama,
+                'email' => $request->email,
+                'nomor_hp' => $request->nomor_hp,
+                'alamat' => $request->alamat,
+            ]);
+
+            $customerId = $customer->id;
+            $customerName = $customer->nama;
+        } else {
+            $customer = \App\Models\Customer::first();
+            if ($customer) {
+                $customerId = $customer->id;
+                $customerName = $customer->nama;
+            }
+        }
+
         $product->stok -= 1;
         $product->save();
 
         Transaction::create([
             'user_id' => Auth::id(),
-            'customer_id' => \App\Models\Customer::where('id', Auth::id())->exists()
-                ? Auth::id()
-                : (\App\Models\Customer::first()?->id ?? Auth::id()),
+            'customer_id' => $customerId,
             'product_id' => $product->id,
             'nomor_invoice' => 'INV-' . rand(1000,9999),
             'tanggal_transaksi' => now(),
-            'pelanggan' => Auth::user()->name,
+            'pelanggan' => $customerName,
             'qty' => 1,
             'total_harga' => $product->harga,
             'status' => 'dibeli',
@@ -192,7 +187,9 @@ class TransactionController extends Controller
             'success' => true,
             'message' => 'Produk ' . $product->nama_produk . ' berhasil dibeli!',
             'stok' => $product->stok,
-            'total_stok_semua' => Product::sum('stok')
+            'total_stok_semua' => Product::sum('stok'),
+            'total_penjualan' => Transaction::count(),
+            'total_pendapatan' => Transaction::sum('total_harga')
         ]);
     }
 

@@ -55,21 +55,34 @@
 </div>
 
 <!-- BUTTON TAMBAH -->
-<div class="mt-10">
+<div class="mt-10 flex flex-col sm:flex-row justify-between items-center gap-4">
 
     <a
         href="{{ route('products.create') }}"
-        class="bg-green-500 hover:bg-green-600 text-white px-8 py-5 rounded-2xl text-2xl shadow transition"
+        class="bg-green-500 hover:bg-green-600 text-white px-8 py-5 rounded-2xl text-2xl shadow transition inline-block text-center"
     >
         + Tambah Produk
     </a>
 
+    <div class="relative w-full sm:w-80">
+        <input 
+            type="text" 
+            id="search-product" 
+            placeholder="Cari kode, nama, atau kategori..." 
+            class="w-full border border-gray-200 rounded-xl pl-4 pr-10 py-3.5 text-sm outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition shadow-sm"
+        >
+        <span class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">
+            🔍
+        </span>
+    </div>
+
 </div>
 
 <!-- TABEL -->
-<div class="bg-white rounded-3xl shadow mt-10 overflow-x-auto">
+<div class="bg-white rounded-3xl shadow mt-10">
 
-<table class="w-full">
+    <div class="overflow-x-auto">
+        <table class="w-full" id="product-table">
 
     <thead class="bg-green-500 text-white">
 
@@ -234,17 +247,36 @@
     </tbody>
 
 </table>
+</div>
 
 </div>
 
 <script>
-function beliProduk(event, id, name) {
+// Pencarian Real-time untuk Tabel Produk
+document.getElementById('search-product')?.addEventListener('input', function(e) {
+    const query = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('#product-table tbody tr');
+    
+    rows.forEach(row => {
+        if (row.cells.length === 1 && row.cells[0].colSpan === 8) {
+            return;
+        }
+        
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(query) ? '' : 'none';
+    });
+});
+
+function beliProduk(event, id, name, customerData = null) {
     event.preventDefault();
     
+    const confirmTitle = customerData ? 'Memproses Transaksi...' : 'Konfirmasi Pembelian';
+    const confirmText = customerData ? `Membeli produk "${name}" untuk pelanggan "${customerData.nama}"...` : `Apakah Anda yakin ingin membeli produk "${name}"?`;
+    
     Swal.fire({
-        title: 'Konfirmasi Pembelian',
-        text: `Apakah Anda yakin ingin membeli produk "${name}"?`,
-        icon: 'question',
+        title: confirmTitle,
+        text: confirmText,
+        icon: customerData ? 'info' : 'question',
         showCancelButton: true,
         confirmButtonColor: '#10b981',
         cancelButtonColor: '#ef4444',
@@ -266,16 +298,50 @@ function beliProduk(event, id, name) {
                     'X-CSRF-TOKEN': '{{ csrf_token() }}',
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'
-                }
+                },
+                body: customerData ? JSON.stringify(customerData) : null
             })
             .then(response => {
-                if (!response.ok) {
-                    throw new Error('Gagal membeli produk.');
-                }
                 return response.json();
             })
             .then(data => {
-                if (data.success) {
+                if (data.needs_customer) {
+                    Swal.fire({
+                        title: 'Data Pelanggan Baru',
+                        text: 'Belum ada data pelanggan di database. Silakan isi terlebih dahulu:',
+                        html:
+                            '<input id="swal-nama" class="swal2-input" placeholder="Nama Pelanggan">' +
+                            '<input id="swal-email" type="email" class="swal2-input" placeholder="Email">' +
+                            '<input id="swal-nomor_hp" class="swal2-input" placeholder="Nomor HP">' +
+                            '<textarea id="swal-alamat" class="swal2-textarea" style="width: 80%;" placeholder="Alamat"></textarea>',
+                        focusConfirm: false,
+                        showCancelButton: true,
+                        confirmButtonColor: '#10b981',
+                        cancelButtonColor: '#ef4444',
+                        confirmButtonText: 'Simpan & Beli',
+                        cancelButtonText: 'Batal',
+                        preConfirm: () => {
+                            const nama = document.getElementById('swal-nama').value.trim();
+                            const email = document.getElementById('swal-email').value.trim();
+                            const nomor_hp = document.getElementById('swal-nomor_hp').value.trim();
+                            const alamat = document.getElementById('swal-alamat').value.trim();
+                            
+                            if (!nama || !email || !nomor_hp || !alamat) {
+                                Swal.showValidationMessage('Semua data wajib diisi!');
+                                return false;
+                            }
+                            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                                Swal.showValidationMessage('Format email tidak valid!');
+                                return false;
+                            }
+                            return { nama, email, nomor_hp, alamat };
+                        }
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            beliProduk(event, id, name, result.value);
+                        }
+                    });
+                } else if (data.success) {
                     Swal.fire({
                         title: 'Berhasil!',
                         text: data.message,
@@ -308,7 +374,7 @@ function beliProduk(event, id, name) {
                 } else {
                     Swal.fire({
                         title: 'Gagal!',
-                        text: data.message,
+                        text: data.message || 'Terjadi kesalahan.',
                         icon: 'error',
                         confirmButtonColor: '#ef4444'
                     });
@@ -318,7 +384,7 @@ function beliProduk(event, id, name) {
                 console.error('Error:', error);
                 Swal.fire({
                     title: 'Gagal!',
-                    text: 'Stok produk habis atau terjadi kesalahan.',
+                    text: 'Terjadi kesalahan saat memproses data.',
                     icon: 'error',
                     confirmButtonColor: '#ef4444'
                 });
