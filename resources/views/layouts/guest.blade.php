@@ -38,7 +38,7 @@
             </div>
 
             <!-- Glassmorphic Card wrapping the content -->
-            <div class="relative w-full sm:max-w-md bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-3xl shadow-2xl p-8 sm:p-10 z-10">
+            <div class="relative w-full {{ $attributes->get('card-width', 'sm:max-w-md') }} bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-3xl shadow-2xl p-8 sm:p-10 z-10">
                 {{ $slot }}
             </div>
         </div>

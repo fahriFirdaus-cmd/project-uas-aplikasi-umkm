@@ -29,14 +29,26 @@ class TransactionController extends Controller
 
         /*
         |--------------------------------------------------------------------------
+        | BACA & CEK QTY
+        |--------------------------------------------------------------------------
+        |
+        */
+
+        $qty = intval(request('qty', 1));
+        if ($qty < 1) {
+            return back()->with('error', 'Jumlah pembelian minimal 1');
+        }
+
+        /*
+        |--------------------------------------------------------------------------
         | CEK STOK
         |--------------------------------------------------------------------------
         |
         */
 
-        if ($product->stok <= 0) {
+        if ($product->stok < $qty) {
 
-            return back()->with('error', 'Stok habis');
+            return back()->with('error', 'Stok tidak mencukupi');
 
         }
 
@@ -62,7 +74,7 @@ class TransactionController extends Controller
         |
         */
 
-        $product->stok -= 1;
+        $product->stok -= $qty;
 
         $product->save();
 
@@ -87,9 +99,9 @@ class TransactionController extends Controller
 
             'pelanggan' => $customer->nama,
 
-            'qty' => 1,
+            'qty' => $qty,
 
-            'total_harga' => $product->harga,
+            'total_harga' => $product->harga * $qty,
 
             'status' => 'dibeli',
 
@@ -122,70 +134,58 @@ class TransactionController extends Controller
     {
         $product = Product::findOrFail($id);
 
-        if ($product->stok <= 0) {
+        $qty = intval($request->input('qty', 1));
+        if ($qty < 1) {
             return response()->json([
                 'success' => false,
-                'message' => 'Stok produk habis!'
+                'message' => 'Jumlah pembelian minimal 1!'
             ], 400);
         }
 
-        // Cek jika database belum memiliki data pelanggan sama sekali
-        if (\App\Models\Customer::count() == 0 && !$request->has('nama')) {
+        if ($product->stok < $qty) {
             return response()->json([
                 'success' => false,
-                'needs_customer' => true,
-                'message' => 'Belum ada data pelanggan di database. Silakan lengkapi data pelanggan baru untuk melanjutkan pembelian.'
-            ]);
+                'message' => 'Stok produk tidak mencukupi! Stok tersedia: ' . $product->stok
+            ], 400);
         }
 
-        $customerId = null;
-        $customerName = Auth::user()->name;
+        // Selalu wajibkan data diri checkout pelanggan
+        $request->validate([
+            'nama' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
+            'nomor_hp' => 'required|string|max:50',
+            'alamat' => 'required|string',
+        ]);
 
-        // Jika request membawa data pelanggan baru
-        if ($request->has('nama')) {
-            $request->validate([
-                'nama' => 'required|string|max:255',
-                'email' => 'required|email|unique:customers,email',
-                'nomor_hp' => 'required|string',
-                'alamat' => 'required|string',
-            ]);
-
-            $customer = \App\Models\Customer::create([
+        // Simpan atau update data pelanggan berdasarkan email
+        $customer = \App\Models\Customer::updateOrCreate(
+            ['email' => $request->email],
+            [
                 'nama' => $request->nama,
-                'email' => $request->email,
                 'nomor_hp' => $request->nomor_hp,
                 'alamat' => $request->alamat,
-            ]);
+            ]
+        );
 
-            $customerId = $customer->id;
-            $customerName = $customer->nama;
-        } else {
-            $customer = \App\Models\Customer::first();
-            if ($customer) {
-                $customerId = $customer->id;
-                $customerName = $customer->nama;
-            }
-        }
-
-        $product->stok -= 1;
+        $product->stok -= $qty;
         $product->save();
 
         Transaction::create([
             'user_id' => Auth::id(),
-            'customer_id' => $customerId,
+            'customer_id' => $customer->id,
             'product_id' => $product->id,
             'nomor_invoice' => 'INV-' . rand(1000,9999),
             'tanggal_transaksi' => now(),
-            'pelanggan' => $customerName,
-            'qty' => 1,
-            'total_harga' => $product->harga,
+            'pelanggan' => $customer->nama,
+            'qty' => $qty,
+            'total_harga' => $product->harga * $qty,
             'status' => 'dibeli',
             'status_pembayaran' => 'Lunas'
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Produk ' . $product->nama_produk . ' berhasil dibeli!',
+            'message' => 'Produk ' . $product->nama_produk . ' sebanyak ' . $qty . ' pcs berhasil dibeli atas nama ' . $customer->nama . '!',
             'stok' => $product->stok,
             'total_stok_semua' => Product::sum('stok'),
             'total_penjualan' => Transaction::count(),

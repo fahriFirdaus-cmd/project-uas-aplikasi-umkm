@@ -306,136 +306,190 @@ document.getElementById('search-product')?.addEventListener('input', function(e)
     });
 });
 
-function beliProduk(event, id, name, customerData = null) {
+
+function beliProduk(event, id, name, qty = null, customerData = null) {
     event.preventDefault();
     
-    const confirmTitle = customerData ? 'Memproses Transaksi...' : 'Konfirmasi Pembelian';
-    const confirmText = customerData ? `Membeli produk "${name}" untuk pelanggan "${customerData.nama}"...` : `Apakah Anda yakin ingin membeli produk "${name}"?`;
+    const btn = event.currentTarget || event.target;
+    const row = btn.closest('tr');
+    const stockBadge = row ? row.querySelector('.stock-badge') : null;
+    const maxStock = stockBadge ? parseInt(stockBadge.textContent) || 9999 : 9999;
     
+    // Step 1: Input Qty
+    if (qty === null) {
+        Swal.fire({
+            title: 'Jumlah Pembelian',
+            html: `
+                <div class="text-center mb-2 text-sm text-gray-500">Silakan tentukan jumlah untuk <strong>${name}</strong>:</div>
+                <div class="flex items-center justify-center space-x-3 bg-gray-50 p-3 rounded-2xl border border-gray-200 max-w-[220px] mx-auto my-4">
+                    <button type="button" id="qty-minus" class="w-10 h-10 rounded-xl bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 font-extrabold flex items-center justify-center focus:outline-none transition active:scale-95 shadow-sm select-none cursor-pointer">-</button>
+                    <input type="number" id="swal-qty" value="1" min="1" max="${maxStock}" class="w-16 text-center bg-transparent border-0 font-bold text-xl focus:outline-none focus:ring-0" style="outline: none; -moz-appearance: textfield;">
+                    <button type="button" id="qty-plus" class="w-10 h-10 rounded-xl bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 font-extrabold flex items-center justify-center focus:outline-none transition active:scale-95 shadow-sm select-none cursor-pointer">+</button>
+                </div>
+                <div class="text-xs text-gray-400 text-center">Stok tersedia: ${maxStock} pcs</div>
+            `,
+            showCancelButton: true,
+            confirmButtonColor: '#10b981',
+            cancelButtonColor: '#ef4444',
+            confirmButtonText: 'Lanjutkan',
+            cancelButtonText: 'Batal',
+            didOpen: () => {
+                const input = document.getElementById('swal-qty');
+                const btnMinus = document.getElementById('qty-minus');
+                const btnPlus = document.getElementById('qty-plus');
+                
+                btnMinus.addEventListener('click', () => {
+                    let val = parseInt(input.value) || 1;
+                    if (val > 1) {
+                        input.value = val - 1;
+                    }
+                });
+                
+                btnPlus.addEventListener('click', () => {
+                    let val = parseInt(input.value) || 1;
+                    if (val < maxStock) {
+                        input.value = val + 1;
+                    }
+                });
+            },
+            preConfirm: () => {
+                const qtyVal = parseInt(document.getElementById('swal-qty').value);
+                if (isNaN(qtyVal) || qtyVal < 1) {
+                    Swal.showValidationMessage('Jumlah minimal pembelian adalah 1!');
+                    return false;
+                }
+                if (qtyVal > maxStock) {
+                    Swal.showValidationMessage(`Jumlah melebihi stok yang tersedia (${maxStock} pcs)!`);
+                    return false;
+                }
+                return qtyVal;
+            }
+        }).then((qtyResult) => {
+            if (qtyResult.isConfirmed) {
+                beliProduk(event, id, name, qtyResult.value, customerData);
+            }
+        });
+        return;
+    }
+    
+    // Step 2: Checkout Form / Customer Information Form
+    if (customerData === null) {
+        Swal.fire({
+            title: 'Formulir Checkout',
+            text: 'Silakan isi data diri Anda untuk menyelesaikan pembelian (Informasi Penagihan & Pengiriman):',
+            html:
+                '<div style="text-align: left; margin-bottom: 4px;" class="text-xs text-gray-500 font-semibold uppercase">Nama Lengkap</div>' +
+                '<input id="swal-nama" class="swal2-input mt-0 mb-3" placeholder="Nama Lengkap Anda" style="margin-top: 0; margin-bottom: 12px; width: 85%;">' +
+                '<div style="text-align: left; margin-bottom: 4px;" class="text-xs text-gray-500 font-semibold uppercase">Alamat Email</div>' +
+                '<input id="swal-email" type="email" class="swal2-input mt-0 mb-3" placeholder="contoh@domain.com" style="margin-top: 0; margin-bottom: 12px; width: 85%;">' +
+                '<div style="text-align: left; margin-bottom: 4px;" class="text-xs text-gray-500 font-semibold uppercase">Nomor HP</div>' +
+                '<input id="swal-nomor_hp" class="swal2-input mt-0 mb-3" placeholder="08xxxxxxxxxx" style="margin-top: 0; margin-bottom: 12px; width: 85%;">' +
+                '<div style="text-align: left; margin-bottom: 4px;" class="text-xs text-gray-500 font-semibold uppercase">Alamat Pengiriman</div>' +
+                '<textarea id="swal-alamat" class="swal2-textarea mt-0" style="width: 85%; margin-top: 0;" placeholder="Alamat lengkap tujuan pengiriman"></textarea>',
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonColor: '#10b981',
+            cancelButtonColor: '#ef4444',
+            confirmButtonText: 'Konfirmasi & Beli',
+            cancelButtonText: 'Batal',
+            preConfirm: () => {
+                const nama = document.getElementById('swal-nama').value.trim();
+                const email = document.getElementById('swal-email').value.trim();
+                const nomor_hp = document.getElementById('swal-nomor_hp').value.trim();
+                const alamat = document.getElementById('swal-alamat').value.trim();
+                
+                if (!nama || !email || !nomor_hp || !alamat) {
+                    Swal.showValidationMessage('Semua data wajib diisi!');
+                    return false;
+                }
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    Swal.showValidationMessage('Format email tidak valid!');
+                    return false;
+                }
+                return { nama, email, nomor_hp, alamat };
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                beliProduk(event, id, name, qty, result.value);
+            }
+        });
+        return;
+    }
+
+    // Step 3: Kirim data via AJAX
     Swal.fire({
-        title: confirmTitle,
-        text: confirmText,
-        icon: customerData ? 'info' : 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#10b981',
-        cancelButtonColor: '#ef4444',
-        confirmButtonText: 'Ya, Beli!',
-        cancelButtonText: 'Batal'
-    }).then((result) => {
-        if (result.isConfirmed) {
+        title: 'Memproses...',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+    
+    const payload = { qty: qty };
+    Object.assign(payload, customerData);
+    
+    fetch(`/beli-ajax/${id}`, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
             Swal.fire({
-                title: 'Memproses...',
-                allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
+                title: 'Berhasil!',
+                text: data.message,
+                icon: 'success',
+                confirmButtonColor: '#10b981'
+            }).then(() => {
+                if (stockBadge) {
+                    const newStock = data.stok;
+                    if (newStock > 0) {
+                        stockBadge.textContent = newStock;
+                        stockBadge.className = "bg-green-500 text-white px-4 py-2 rounded-xl stock-badge";
+                    } else {
+                        stockBadge.textContent = "Habis";
+                        stockBadge.className = "bg-red-500 text-white px-4 py-2 rounded-xl stock-badge";
+                        
+                        btn.disabled = true;
+                        btn.className = "bg-gray-400 text-white px-4 py-2 rounded-xl cursor-not-allowed";
+                        btn.onclick = null;
+                    }
+                }
+                
+                // Update Dashboard widgets dynamically
+                const totalPenjualanEl = document.getElementById('total-penjualan-display');
+                if (totalPenjualanEl) {
+                    totalPenjualanEl.textContent = data.total_penjualan;
+                }
+                
+                const totalPendapatanEl = document.getElementById('total-pendapatan-display');
+                if (totalPendapatanEl) {
+                    const formatted = new Intl.NumberFormat('id-ID').format(data.total_pendapatan);
+                    totalPendapatanEl.textContent = 'Rp ' + formatted;
                 }
             });
-            
-            fetch(`/beli-ajax/${id}`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                },
-                body: customerData ? JSON.stringify(customerData) : null
-            })
-            .then(response => {
-                return response.json();
-            })
-            .then(data => {
-                if (data.needs_customer) {
-                    Swal.fire({
-                        title: 'Data Pelanggan Baru',
-                        text: 'Belum ada data pelanggan di database. Silakan isi terlebih dahulu:',
-                        html:
-                            '<input id="swal-nama" class="swal2-input" placeholder="Nama Pelanggan">' +
-                            '<input id="swal-email" type="email" class="swal2-input" placeholder="Email">' +
-                            '<input id="swal-nomor_hp" class="swal2-input" placeholder="Nomor HP">' +
-                            '<textarea id="swal-alamat" class="swal2-textarea" style="width: 80%;" placeholder="Alamat"></textarea>',
-                        focusConfirm: false,
-                        showCancelButton: true,
-                        confirmButtonColor: '#10b981',
-                        cancelButtonColor: '#ef4444',
-                        confirmButtonText: 'Simpan & Beli',
-                        cancelButtonText: 'Batal',
-                        preConfirm: () => {
-                            const nama = document.getElementById('swal-nama').value.trim();
-                            const email = document.getElementById('swal-email').value.trim();
-                            const nomor_hp = document.getElementById('swal-nomor_hp').value.trim();
-                            const alamat = document.getElementById('swal-alamat').value.trim();
-                            
-                            if (!nama || !email || !nomor_hp || !alamat) {
-                                Swal.showValidationMessage('Semua data wajib diisi!');
-                                return false;
-                            }
-                            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                                Swal.showValidationMessage('Format email tidak valid!');
-                                return false;
-                            }
-                            return { nama, email, nomor_hp, alamat };
-                        }
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            beliProduk(event, id, name, result.value);
-                        }
-                    });
-                } else if (data.success) {
-                    Swal.fire({
-                        title: 'Berhasil!',
-                        text: data.message,
-                        icon: 'success',
-                        confirmButtonColor: '#10b981'
-                    }).then(() => {
-                        const row = event.target.closest('tr');
-                        const stockBadge = row.querySelector('.stock-badge');
-                        
-                        if (stockBadge) {
-                            const newStock = data.stok;
-                            if (newStock > 0) {
-                                stockBadge.textContent = newStock;
-                                stockBadge.className = "bg-green-500 text-white px-4 py-2 rounded-xl stock-badge";
-                            } else {
-                                stockBadge.textContent = "Habis";
-                                stockBadge.className = "bg-red-500 text-white px-4 py-2 rounded-xl stock-badge";
-                                
-                                event.target.disabled = true;
-                                event.target.className = "bg-gray-400 text-white px-4 py-2 rounded-xl cursor-not-allowed";
-                                event.target.onclick = null;
-                            }
-                        }
-                        
-                        // Update Dashboard widgets dynamically
-                        const totalPenjualanEl = document.getElementById('total-penjualan-display');
-                        if (totalPenjualanEl) {
-                            totalPenjualanEl.textContent = data.total_penjualan;
-                        }
-                        
-                        const totalPendapatanEl = document.getElementById('total-pendapatan-display');
-                        if (totalPendapatanEl) {
-                            const formatted = new Intl.NumberFormat('id-ID').format(data.total_pendapatan);
-                            totalPendapatanEl.textContent = 'Rp ' + formatted;
-                        }
-                    });
-                } else {
-                    Swal.fire({
-                        title: 'Gagal!',
-                        text: data.message || 'Terjadi kesalahan.',
-                        icon: 'error',
-                        confirmButtonColor: '#ef4444'
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                Swal.fire({
-                    title: 'Gagal!',
-                    text: 'Terjadi kesalahan saat memproses data.',
-                    icon: 'error',
-                    confirmButtonColor: '#ef4444'
-                });
+        } else {
+            Swal.fire({
+                title: 'Gagal!',
+                text: data.message || 'Terjadi kesalahan.',
+                icon: 'error',
+                confirmButtonColor: '#ef4444'
             });
         }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        Swal.fire({
+            title: 'Gagal!',
+            text: 'Terjadi kesalahan saat memproses data.',
+            icon: 'error',
+            confirmButtonColor: '#ef4444'
+        });
     });
 }
 
